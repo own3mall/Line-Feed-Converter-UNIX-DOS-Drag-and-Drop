@@ -1,2 +1,2 @@
-# Line-Feed-Converter-UNIX-DOS-Drag-and-Drop
-Convert Line Feed (Newlines) to Unix LF and Windows CRLF Format Using Drag and Drop File and Folder Recursive Functionality
+# Line Feed Recursive Converter UNIX LF - DOS CRLF Drag and Drop Converter
+A quick and efficient Windows drag and drop utility that recursively converts multiple files and folders to different line feed formats.  Convert line feeds (newlines) in files to Unix LF and Windows CRLF format. 
