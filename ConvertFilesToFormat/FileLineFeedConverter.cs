@@ -18,7 +18,6 @@ namespace ConvertFilesToFormat
         #region GlobalVars
         // Global vars
         List<string> filesToProcess = new List<string>();
-        int count = 0;
         string settingsFile = AppDomain.CurrentDomain.BaseDirectory + "\\user_settings";
         #endregion
 
@@ -52,6 +51,7 @@ namespace ConvertFilesToFormat
         {
             if (File.Exists(settingsFile))
             {
+                bool placeDefaultExts = true;
                 FileConversionArgs args = GenericHelper.ReadFromBinaryFile<FileConversionArgs>(settingsFile);
                 if (args.BackupFiles)
                 {
@@ -66,6 +66,41 @@ namespace ConvertFilesToFormat
                 if (args.LFMode >= 0)
                 {
                     actionDL.SelectedIndex = args.LFMode;
+                }
+
+                if (args.FileExtensionsToProcess != null)
+                {
+                    if (args.FileExtensionsToProcess.Any())
+                    {
+                        for (int i = 0; i < args.FileExtensionsToProcess.Count; i++)
+                        {
+                            if (i == 0)
+                            {
+                                extensionsTB.Text += args.FileExtensionsToProcess[i];
+                            }
+                            else
+                            {
+                                extensionsTB.Text += "," + args.FileExtensionsToProcess[i];
+                            }
+                        }
+                    }
+                    else
+                    {
+                        placeDefaultExts = false;
+                    }
+                }
+
+                // Set defaults
+                if (string.IsNullOrEmpty(extensionsTB.Text) && placeDefaultExts)
+                {
+                    extensionsTB.Text = "php,js,css,htm,html,py,pl,txt";
+                }
+                else
+                {
+                    if (!string.IsNullOrEmpty(extensionsTB.Text))
+                    {
+                        extensionsTB.Text = extensionsTB.Text.Replace(".", ""); // Don't show the ugly period before extension
+                    }
                 }
             }
         }
@@ -150,6 +185,14 @@ namespace ConvertFilesToFormat
                             processFoldersAndFiles(path);
                             HandleConversion();
                         }
+                        else
+                        {
+                            resetDragView();
+                        }
+                    }
+                    else
+                    {
+                        resetDragView();
                     }
                 }
                 else
@@ -256,15 +299,36 @@ namespace ConvertFilesToFormat
             SaveInputs();
         }
 
+        private List<string> processExtensionsTB()
+        {
+            List<string> extensions = new List<string>();
+            if (!string.IsNullOrEmpty(extensionsTB.Text))
+            {
+                string[] exts = extensionsTB.Text.Split(',');
+                foreach (string ext in exts)
+                {
+                    if (ext.IndexOf('.') == -1)
+                    {
+                        extensions.Add("." + ext.Trim());
+                    }
+                    else
+                    {
+                        extensions.Add(ext.Trim());
+                    }
+                }
+            }
+            return extensions;
+        }
+
         #endregion
 
         #region Logic
 
         private void clearFilesTextAndResetCounter()
         {
-            count = 0;
             filesToProcess = new List<string>();
             rtbFilesToProcess.Text = "";
+            consoleTB.Text = ""; // Reset log text
         }
 
         private void processFoldersAndFiles(string file)
@@ -316,14 +380,16 @@ namespace ConvertFilesToFormat
                 }
 
                 FileConversionArgs args = new FileConversionArgs { LFMode = actionDL.SelectedIndex, BackupPath = folderPathToBackupTB.Text, BackupFiles = bkFilesCB.Checked };
+                args.FileExtensionsToProcess = processExtensionsTB();
 
                 //Console.WriteLine("---------------------------------------------");
-                Console.WriteLine(date + " - Running conversion " + action + " on " + filesToProcess.Count.ToString() + " " + filesStr + ".");
+                Console.WriteLine(date + " - Running conversion " + action + " on " + filesToProcess.Count.ToString() + " " + filesStr + " before applying extension and content filters.");
                 backgroundWorker.RunWorkerAsync(args);
             }
             else
             {
-
+                resetDragView();
+                MessageBox.Show("No files to process.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -351,6 +417,7 @@ namespace ConvertFilesToFormat
         private void SaveInputs()
         {
             FileConversionArgs args = new FileConversionArgs { LFMode = actionDL.SelectedIndex, BackupPath = folderPathToBackupTB.Text, BackupFiles = bkFilesCB.Checked };
+            args.FileExtensionsToProcess = processExtensionsTB();
             GenericHelper.WriteToBinaryFile(AppDomain.CurrentDomain.BaseDirectory + "\\user_settings", args);
         }
 

@@ -24,9 +24,16 @@ namespace ConvertFilesToFormat.Classes
             }
             catch (System.Exception excpt)
             {
-                //Console.WriteLine(excpt.Message);
+                Console.WriteLine(excpt.Message);
             }
             return files;
+        }
+
+        public static bool FileHasBinaryContent(string filePath)
+        {
+            string content = File.ReadAllText(filePath);
+            char[] allowedChars = {'\r', '\n', '\t', '\f', '\v', '\b'};
+            return content.Any(ch => char.IsControl(ch) && !allowedChars.Contains(ch));
         }
     }
 }

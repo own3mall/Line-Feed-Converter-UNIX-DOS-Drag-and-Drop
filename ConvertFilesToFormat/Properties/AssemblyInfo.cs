@@ -5,11 +5,11 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("ConvertFilesToFormat")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyTitle("Line Feed (Newlines) Recursive Converter")]
+[assembly: AssemblyDescription("Convert Files to UNIX LF and Windows CRLF Format")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("ConvertFilesToFormat")]
+[assembly: AssemblyProduct("Line Feed (Newlines) Recursive Converter")]
 [assembly: AssemblyCopyright("Copyright ©  2017")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]

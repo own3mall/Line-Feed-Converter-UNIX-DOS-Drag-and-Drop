@@ -22,6 +22,9 @@ namespace ConvertFilesToFormat.Classes
         private void Init()
         {
             if (args != null) {
+                // Filter out any entries that don't end with the proper extension
+                filterListOfFilesPerExtensionAndContent();
+
                 if (args.BackupFiles)
                 {
                     backupFilesToProcess();
@@ -36,6 +39,51 @@ namespace ConvertFilesToFormat.Classes
                     convertToWindowsCRLF(args.FilesToProcess);
                 }
             }
+        }
+
+        private void filterListOfFilesPerExtensionAndContent()
+        {
+            List<string> editedFilePaths = new List<string>();
+        
+            // Check file extensions on each file
+            if (args.FileExtensionsToProcess.Any())
+            {
+                foreach (string filePath in args.FilesToProcess)
+                {
+                    var ext = Path.GetExtension(filePath);
+                    if (string.IsNullOrEmpty(ext))
+                    {
+                        // No extension is fine too
+                        // If we don't have an extension, check to see if it has binary content - ignore files that have binary content... we're just processing text files
+                        if (!FileFolderHelper.FileHasBinaryContent(filePath))
+                        {
+                            editedFilePaths.Add(filePath);
+                        }
+                    }
+                    else
+                    {
+                        if (args.FileExtensionsToProcess.Contains(ext))
+                        {
+                            editedFilePaths.Add(filePath);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // User hasn't defined any extensions, which is fine, but we run into problems processing every file type...
+                // Check for only files that don't have binary content
+                foreach (string filePath in args.FilesToProcess)
+                {
+                    if (!FileFolderHelper.FileHasBinaryContent(filePath))
+                    {
+                        editedFilePaths.Add(filePath);
+                    }
+                }
+            }
+
+            // Set our filtered list
+            args.FilesToProcess = editedFilePaths;
         }
 
         private void backupFilesToProcess()
@@ -64,6 +112,8 @@ namespace ConvertFilesToFormat.Classes
         public void convertToWindowsCRLF(List<string> filePaths)
         {
             int count = 0;
+            int percentCount = 0;
+            double totalFilesToProcess = Convert.ToDouble(filePaths.Count);
             foreach (string file in filePaths)
             {
                 try
@@ -82,13 +132,22 @@ namespace ConvertFilesToFormat.Classes
                     Console.WriteLine("Failed to convert file \"" + file + "\" to Windows CRLF DOS mode due to the following error:\n" + e.Message + "\n");
                 }
                 count++;
-                bg.ReportProgress((int)((count / filePaths.Count) * 100));
+
+                percentCount = (int)((count / totalFilesToProcess) * 100);
+                bg.ReportProgress(percentCount);
+
+                if (percentCount >= 100)
+                {
+                    Console.WriteLine("Processed " + count.ToString() + " file(s) based on extensions and binary content filters.");
+                }
             }
         }
 
         public void convertToUnixLF(List<string> filePaths)
         {
             int count = 0;
+            int percentCount = 0;
+            double totalFilesToProcess = Convert.ToDouble(filePaths.Count);
             const byte CR = 0x0D;
             const byte LF = 0x0A;
             foreach (string file in filePaths)
@@ -123,7 +182,15 @@ namespace ConvertFilesToFormat.Classes
                     Console.WriteLine("Failed to convert file \"" + file + "\" to Unix LF mode due to the following error:\n" + Ex.Message + "\n");
                 }
                 count++;
-                bg.ReportProgress((int)((count / filePaths.Count) * 100));
+
+                percentCount = (int)((count / totalFilesToProcess) * 100);
+                bg.ReportProgress(percentCount);
+
+                if (percentCount >= 100)
+                {
+                    Console.WriteLine("Processed " + count.ToString() + " file(s) based on extensions and binary content filters.");
+                }
+
             }
         }
     }
