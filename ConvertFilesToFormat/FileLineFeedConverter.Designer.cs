@@ -96,8 +96,8 @@
             // ddPic
             // 
             this.ddPic.BackColor = System.Drawing.Color.Transparent;
-            this.ddPic.Image = ((System.Drawing.Image)(resources.GetObject("ddPic.Image")));
-            this.ddPic.InitialImage = ((System.Drawing.Image)(resources.GetObject("ddPic.InitialImage")));
+            this.ddPic.Image = Properties.Resources.ddPic;
+            this.ddPic.InitialImage = Properties.Resources.ddPic;
             this.ddPic.Location = new System.Drawing.Point(171, 19);
             this.ddPic.Name = "ddPic";
             this.ddPic.Size = new System.Drawing.Size(50, 50);
@@ -345,7 +345,7 @@
             this.Controls.Add(this.label1);
             this.Controls.Add(this.progressBar);
             this.Controls.Add(this.menuStrip1);
-            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
+            this.Icon = Properties.Resources.text_file;
             this.MainMenuStrip = this.menuStrip1;
             this.MaximumSize = new System.Drawing.Size(477, 700);
             this.Name = "FileLineFeedConverter";
