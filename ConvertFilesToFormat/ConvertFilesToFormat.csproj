@@ -52,6 +52,7 @@
     <Compile Include="Classes\FileFolderHelper.cs" />
     <Compile Include="Classes\GenericHelper.cs" />
     <Compile Include="Classes\TextFileConversionUtilities.cs" />
+    <Compile Include="Extensions\Invoker.cs" />
     <Compile Include="FileLineFeedConverter.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -60,6 +61,9 @@
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <EmbeddedResource Include="FileLineFeedConverter.resx">
+      <DependentUpon>FileLineFeedConverter.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>PublicResXFileCodeGenerator</Generator>
       <SubType>Designer</SubType>

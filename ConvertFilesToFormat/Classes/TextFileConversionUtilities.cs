@@ -11,11 +11,16 @@ namespace ConvertFilesToFormat.Classes
     {
         BackgroundWorker bg = null;
         FileConversionArgs args = null;
-        public TextFileConversionUtilities(ref BackgroundWorker main, FileConversionArgs options)
+        FileLineFeedConverter fileLineFeedConverter;
+
+        public TextFileConversionUtilities(FileLineFeedConverter lf, ref BackgroundWorker main, FileConversionArgs options)
         {
+            // Set vars
             bg = main;
             args = options;
-
+            fileLineFeedConverter = lf;
+            
+            // Init
             Init();
         }
 
@@ -30,7 +35,7 @@ namespace ConvertFilesToFormat.Classes
                     backupFilesToProcess();
                 }
 
-                if ( args.LFMode == 0)
+                if (args.LFMode == 0)
                 {
                     convertToUnixLF(args.FilesToProcess);
                 }
@@ -101,6 +106,31 @@ namespace ConvertFilesToFormat.Classes
                 {
                     string justFileName = Path.GetFileName(filePath);
                     string fullBKPath = pathToBackup + "\\" + justFileName;
+
+                    // Maintain directory structure on copying
+                    var parentFolders = args.FolderParents.Where(c => filePath.Contains(c)).ToList();
+                    if (parentFolders.Any() && args.MaintainFolderStructureOnBackup)
+                    {
+                        string parentFolder = parentFolders.OrderByDescending(c=> c.Length).FirstOrDefault();
+                        if(parentFolder != null){
+                            // We found a match, so maintain folder structure
+                            string pathWeCareAbout = Path.GetDirectoryName(filePath);
+                            pathWeCareAbout = pathWeCareAbout.Substring(parentFolder.Length);
+
+                            // Append parent folder to the name
+                            string rootFolderName = parentFolder.Substring(parentFolder.LastIndexOf("\\") + 1);
+
+                            if (!string.IsNullOrEmpty(rootFolderName))
+                            {
+                                // Create the directories in the copy we're making
+                                Directory.CreateDirectory(pathToBackup + "\\" + rootFolderName + pathWeCareAbout);
+
+                                // Set the full path
+                                fullBKPath = pathToBackup + "\\" + rootFolderName + pathWeCareAbout + "\\" + justFileName;
+                            }
+                        }
+                    }
+
                     if (File.Exists(fullBKPath)) {
                         fullBKPath += "_bk_" + GenericHelper.GenerateRandomStr();
                     }
@@ -132,14 +162,10 @@ namespace ConvertFilesToFormat.Classes
                     Console.WriteLine("Failed to convert file \"" + file + "\" to Windows CRLF DOS mode due to the following error:\n" + e.Message + "\n");
                 }
                 count++;
+                fileLineFeedConverter.totalFilesProcessed++;
 
-                percentCount = (int)((count / totalFilesToProcess) * 100);
-                bg.ReportProgress(percentCount);
-
-                if (percentCount >= 100)
-                {
-                    Console.WriteLine("Processed " + count.ToString() + " file(s) based on extensions and binary content filters.");
-                }
+                percentCount = (int)((fileLineFeedConverter.totalFilesProcessed / fileLineFeedConverter.totalFilesToProcess) * 100);
+                fileLineFeedConverter.updateProgressbar(percentCount);
             }
         }
 
@@ -182,15 +208,10 @@ namespace ConvertFilesToFormat.Classes
                     Console.WriteLine("Failed to convert file \"" + file + "\" to Unix LF mode due to the following error:\n" + Ex.Message + "\n");
                 }
                 count++;
+                fileLineFeedConverter.totalFilesProcessed++;
 
-                percentCount = (int)((count / totalFilesToProcess) * 100);
-                bg.ReportProgress(percentCount);
-
-                if (percentCount >= 100)
-                {
-                    Console.WriteLine("Processed " + count.ToString() + " file(s) based on extensions and binary content filters.");
-                }
-
+                percentCount = (int)((fileLineFeedConverter.totalFilesProcessed / fileLineFeedConverter.totalFilesToProcess) * 100);
+                fileLineFeedConverter.updateProgressbar(percentCount);
             }
         }
     }

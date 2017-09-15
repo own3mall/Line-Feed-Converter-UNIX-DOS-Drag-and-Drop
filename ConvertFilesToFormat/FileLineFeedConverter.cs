@@ -9,6 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using ConvertFilesToFormat.Extensions;
 
 namespace ConvertFilesToFormat
 {
@@ -19,6 +20,15 @@ namespace ConvertFilesToFormat
         // Global vars
         List<string> filesToProcess = new List<string>();
         string settingsFile = AppDomain.CurrentDomain.BaseDirectory + "\\user_settings";
+        List<BackgroundWorker> ThreadedWorkers = new List<BackgroundWorker>();
+        List<string> FolderParents = new List<string>();
+        public double maxThreads = 10;
+        public double totalFilesProcessed = 0;
+        public double totalFilesToProcess = 0;
+        bool completedMessageShown = false;
+        DateTime operationsStarted = new DateTime();
+        DateTime operationsEnded = new DateTime();
+        bool mainTainStructureOnBackup = true;
         #endregion
 
         #region Init
@@ -42,7 +52,6 @@ namespace ConvertFilesToFormat
 
             // Set background worker
             backgroundWorker.DoWork += backgroundWorker_DoWork;
-            backgroundWorker.ProgressChanged += backgroundWorker_ProgressChanged;
 
             LoadSettings();
         }
@@ -56,6 +65,16 @@ namespace ConvertFilesToFormat
                 if (args.BackupFiles)
                 {
                     bkFilesCB.Checked = true;
+                }
+
+                if (args.MaintainFolderStructureOnBackup == false)
+                {
+                    mainTainStructureCB.Checked = false;
+                }
+
+                if (args.NumberOfThreadsToUse > 0 && args.NumberOfThreadsToUse <= 64)
+                {
+                    numThreadsTB.Text = args.NumberOfThreadsToUse.ToString();
                 }
 
                 if (!string.IsNullOrEmpty(args.BackupPath))
@@ -138,7 +157,7 @@ namespace ConvertFilesToFormat
         {
             if (inputsValid())
             {
-                if (!backgroundWorker.IsBusy)
+                if (!AnyBackgroundWorkerBusy())
                 {
                     clearFilesTextAndResetCounter();
                     string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
@@ -152,7 +171,7 @@ namespace ConvertFilesToFormat
                 else
                 {
                     showPleaseWaitForThreadingMessage();
-                    resetDragView();
+                    // resetDragView(); // NO, why would you reset it here?
                 }
             }
             else
@@ -164,6 +183,52 @@ namespace ConvertFilesToFormat
 
         #region UI Manipulation
 
+        private void numThreadsTB_TextChanged(object sender, EventArgs e)
+        {
+            int n;
+            string error = "";
+            bool isNumeric = int.TryParse(numThreadsTB.Text, out n);
+            if (!isNumeric)
+            {
+                numThreadsTB.Text = "10";
+                error += "You must enter a numeric value!\n";
+            }
+            else
+            {
+                if (n <= 0 || n > 20)
+                {
+                    error += "Please enter a number between 1 and 20. These are software threads, not hardware, so don't go off of how many threads your CPU has.\n";
+                    numThreadsTB.Text = "10";
+                }
+            }
+
+            if (!string.IsNullOrEmpty(error))
+            {
+                MessageBox.Show(error, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        internal void updateProgressbar(int percent)
+        {
+            this.InvokeEx(f => f.progressBar.Value = percent);
+
+            if (percent >= 100 && !completedMessageShown)
+            {
+                // Set our variables
+                completedMessageShown = true;
+                DateTime today = DateTime.Now;
+                string date = today.ToString("M/dd/yyyy h:mm:ss tt");
+                operationsEnded = DateTime.Now;
+
+                // Write out status
+                Console.WriteLine("Processed " + totalFilesProcessed.ToString() + " file(s) based on extensions and binary content filters.");
+                Console.WriteLine("\nOperations completed on " + date + ".  Total time spent on file conversion: " + (operationsEnded - operationsStarted).TotalSeconds + " seconds\n");
+
+                // Reset UI
+                resetDragView();
+            }
+        }
+
         private void ddPic_Click(object sender, EventArgs e)
         {
             showFolderPicker();
@@ -173,7 +238,7 @@ namespace ConvertFilesToFormat
         {
             if (inputsValid())
             {
-                if (!backgroundWorker.IsBusy)
+                if (!AnyBackgroundWorkerBusy())
                 {
                     if (folderBrowserDialog.ShowDialog() == DialogResult.OK)
                     {
@@ -226,9 +291,9 @@ namespace ConvertFilesToFormat
 
         private void resetDragView()
         {
-            rtbFilesToProcess.Text = "";
-            ddLabel.Show();
-            ddPic.Show();
+            this.InvokeEx(f => f.rtbFilesToProcess.Text = "");
+            this.InvokeEx(f => f.ddLabel.Show());
+            this.InvokeEx(f => f.ddPic.Show());
         }
 
         private void consoleTB_TextChanged(object sender, EventArgs e)
@@ -274,11 +339,14 @@ namespace ConvertFilesToFormat
             {
                 folderPathToBackupTB.Visible = true;
                 browseBackupDirButton.Visible = true;
+                mainTainStructureCB.Enabled = true;
             }
             else
             {
                 folderPathToBackupTB.Visible = false;
                 browseBackupDirButton.Visible = false;
+                mainTainStructureCB.Enabled = false;
+                mainTainStructureCB.Checked = true;
             }
         }
 
@@ -324,11 +392,22 @@ namespace ConvertFilesToFormat
 
         #region Logic
 
+        private bool AnyBackgroundWorkerBusy()
+        {
+            if (!backgroundWorker.IsBusy && (!ThreadedWorkers.Any() || (ThreadedWorkers.Any() && !ThreadedWorkers.Any(c => c.IsBusy))))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
         private void clearFilesTextAndResetCounter()
         {
             filesToProcess = new List<string>();
             rtbFilesToProcess.Text = "";
             consoleTB.Text = ""; // Reset log text
+            FolderParents = new List<string>();
         }
 
         private void processFoldersAndFiles(string file)
@@ -339,7 +418,16 @@ namespace ConvertFilesToFormat
                 bool isFolder = (attr & FileAttributes.Directory) == FileAttributes.Directory;
                 if (isFolder)
                 {
+                    // Add it to our list of parents
+                    if (!FolderParents.Contains(file))
+                    {
+                        FolderParents.Add(file);
+                    }
+
+                    // Add it to the UI text box
                     addFolderToRTB(file);
+
+                    // Scan the folder recursively and add all files to the list
                     List<string> filesInFolder = FileFolderHelper.DirSearch(file);
                     if (filesInFolder.Any())
                     {
@@ -379,7 +467,7 @@ namespace ConvertFilesToFormat
                     action = "to Windows CRLF mode";
                 }
 
-                FileConversionArgs args = new FileConversionArgs { LFMode = actionDL.SelectedIndex, BackupPath = folderPathToBackupTB.Text, BackupFiles = bkFilesCB.Checked };
+                FileConversionArgs args = new FileConversionArgs { LFMode = actionDL.SelectedIndex, BackupPath = folderPathToBackupTB.Text, BackupFiles = bkFilesCB.Checked, FolderParents = FolderParents };
                 args.FileExtensionsToProcess = processExtensionsTB();
 
                 //Console.WriteLine("---------------------------------------------");
@@ -416,7 +504,7 @@ namespace ConvertFilesToFormat
 
         private void SaveInputs()
         {
-            FileConversionArgs args = new FileConversionArgs { LFMode = actionDL.SelectedIndex, BackupPath = folderPathToBackupTB.Text, BackupFiles = bkFilesCB.Checked };
+            FileConversionArgs args = new FileConversionArgs { LFMode = actionDL.SelectedIndex, BackupPath = folderPathToBackupTB.Text, BackupFiles = bkFilesCB.Checked, NumberOfThreadsToUse = Convert.ToInt32(numThreadsTB.Text), MaintainFolderStructureOnBackup = mainTainStructureCB.Checked };
             args.FileExtensionsToProcess = processExtensionsTB();
             GenericHelper.WriteToBinaryFile(AppDomain.CurrentDomain.BaseDirectory + "\\user_settings", args);
         }
@@ -428,20 +516,50 @@ namespace ConvertFilesToFormat
         private void backgroundWorker_DoWork(object sender, System.ComponentModel.DoWorkEventArgs e)
         {
             var options = (FileConversionArgs)e.Argument;
-            options.FilesToProcess = filesToProcess;
-            if (filesToProcess.Any())
+            maxThreads = Convert.ToInt32(numThreadsTB.Text);
+            int filesToHandlePerThread = (int)Math.Ceiling(filesToProcess.Count / maxThreads);
+            totalFilesToProcess = filesToProcess.Count;
+            totalFilesProcessed = 0;
+            ThreadedWorkers = new List<BackgroundWorker>();
+            completedMessageShown = false;
+            operationsStarted = DateTime.Now;
+            operationsEnded = DateTime.Now;
+
+            List<string> filesSplitUp = new List<string>();
+            for (int i = 0; i < filesToProcess.Count; i++)
             {
-                TextFileConversionUtilities tc = new TextFileConversionUtilities(ref backgroundWorker, options);
+                if (i != 0 && i % filesToHandlePerThread == 0)
+                {
+                    options.FilesToProcess = filesSplitUp;
+                    addThreadedBackgroundWorker(new FileConversionArgs() { FilesToProcess = options.FilesToProcess, BackupFiles = options.BackupFiles, BackupPath = options.BackupPath, FileExtensionsToProcess = options.FileExtensionsToProcess, LFMode = options.LFMode, FolderParents = options.FolderParents, MaintainFolderStructureOnBackup = mainTainStructureCB.Checked});
+                    filesSplitUp = new List<string>();
+                }
+                filesSplitUp.Add(filesToProcess[i]);
             }
-            Console.WriteLine("\nOperations completed.\n");
+
+            // Get the last batch
+            if (filesSplitUp.Any())
+            {
+                options.FilesToProcess = filesSplitUp;
+                addThreadedBackgroundWorker(new FileConversionArgs() { FilesToProcess = options.FilesToProcess, BackupFiles = options.BackupFiles, BackupPath = options.BackupPath, FileExtensionsToProcess = options.FileExtensionsToProcess, LFMode = options.LFMode, FolderParents = options.FolderParents, MaintainFolderStructureOnBackup = mainTainStructureCB.Checked});
+                filesSplitUp = new List<string>();
+            }            
         }
 
-        private void backgroundWorker_ProgressChanged(object sender, System.ComponentModel.ProgressChangedEventArgs e)
+        private void addThreadedBackgroundWorker(FileConversionArgs args)
         {
-            progressBar.Value = e.ProgressPercentage;
-            if (e.ProgressPercentage >= 100)
+            BackgroundWorker bc = new BackgroundWorker();
+            bc.DoWork += threadedBackgroundWorker_DoWork;
+            ThreadedWorkers.Add(bc);
+            bc.RunWorkerAsync(args);
+        }
+
+        private void threadedBackgroundWorker_DoWork(object sender, System.ComponentModel.DoWorkEventArgs e)
+        {
+            var options = (FileConversionArgs)e.Argument;
+            if (options.FilesToProcess.Any())
             {
-                resetDragView();
+                TextFileConversionUtilities tc = new TextFileConversionUtilities(this, ref backgroundWorker, options);
             }
         }
 
