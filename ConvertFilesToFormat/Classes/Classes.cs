@@ -32,6 +32,7 @@ namespace ConvertFilesToFormat.Classes
         public int NumberOfThreadsToUse { get; set; }
 
         public bool MaintainFolderStructureOnBackup { get; set; }
+
     }
 
     [Serializable()]

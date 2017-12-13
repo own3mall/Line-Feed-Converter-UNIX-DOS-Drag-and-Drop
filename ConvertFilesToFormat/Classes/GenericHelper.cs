@@ -77,5 +77,63 @@ namespace ConvertFilesToFormat.Classes
             }
         }
 
+
+        public static List<string> SplitCommaStringToList(string blackListedExtensionsStr)
+        {
+            List<string> result = new List<string>();
+            result = blackListedExtensionsStr.Split(',').ToList();
+            result.RemoveAll(c => string.IsNullOrEmpty(c));
+            return result;
+        }
+
+        public static List<string> FilterFiles(List<string> Files, List<string> FileExtensionsToProcess, List<string> BlackListedFileExtensions)
+        {
+
+            List<string> editedFilePaths = new List<string>();
+
+            // Check file extensions on each file
+            if (FileExtensionsToProcess.Any())
+            {
+                foreach (string filePath in Files)
+                {
+                    var ext = Path.GetExtension(filePath);
+                    if (string.IsNullOrEmpty(ext))
+                    {
+                        editedFilePaths.Add(filePath);
+                    }
+                    else
+                    {
+                        if (FileExtensionsToProcess.Contains(ext) && !BlackListedFileExtensions.Contains(ext))
+                        {
+                            editedFilePaths.Add(filePath);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // User hasn't defined any extensions, which is fine, but we run into problems processing every file type...
+                // Check for only files that don't have binary content
+                foreach (string filePath in Files)
+                {
+                    var ext = Path.GetExtension(filePath);
+                    if (string.IsNullOrEmpty(ext))
+                    {
+                        editedFilePaths.Add(filePath);
+                    }
+                    else
+                    {
+                        // Check our blacklisted extensions list...
+                        if (!BlackListedFileExtensions.Contains(ext))
+                        {
+                            editedFilePaths.Add(filePath);
+                        }
+                    }
+                }
+            }
+
+            // Set our filtered list
+            return editedFilePaths;
+        }
     }
 }

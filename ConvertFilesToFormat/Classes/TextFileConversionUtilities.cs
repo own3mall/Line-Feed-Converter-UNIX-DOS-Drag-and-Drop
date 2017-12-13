@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Configuration;
 
 namespace ConvertFilesToFormat.Classes
 {
@@ -19,7 +20,7 @@ namespace ConvertFilesToFormat.Classes
             bg = main;
             args = options;
             fileLineFeedConverter = lf;
-            
+
             // Init
             Init();
         }
@@ -27,8 +28,6 @@ namespace ConvertFilesToFormat.Classes
         private void Init()
         {
             if (args != null) {
-                // Filter out any entries that don't end with the proper extension
-                filterListOfFilesPerExtensionAndContent();
 
                 if (args.BackupFiles)
                 {
@@ -44,51 +43,6 @@ namespace ConvertFilesToFormat.Classes
                     convertToWindowsCRLF(args.FilesToProcess);
                 }
             }
-        }
-
-        private void filterListOfFilesPerExtensionAndContent()
-        {
-            List<string> editedFilePaths = new List<string>();
-        
-            // Check file extensions on each file
-            if (args.FileExtensionsToProcess.Any())
-            {
-                foreach (string filePath in args.FilesToProcess)
-                {
-                    var ext = Path.GetExtension(filePath);
-                    if (string.IsNullOrEmpty(ext))
-                    {
-                        // No extension is fine too
-                        // If we don't have an extension, check to see if it has binary content - ignore files that have binary content... we're just processing text files
-                        if (!FileFolderHelper.FileHasBinaryContent(filePath))
-                        {
-                            editedFilePaths.Add(filePath);
-                        }
-                    }
-                    else
-                    {
-                        if (args.FileExtensionsToProcess.Contains(ext))
-                        {
-                            editedFilePaths.Add(filePath);
-                        }
-                    }
-                }
-            }
-            else
-            {
-                // User hasn't defined any extensions, which is fine, but we run into problems processing every file type...
-                // Check for only files that don't have binary content
-                foreach (string filePath in args.FilesToProcess)
-                {
-                    if (!FileFolderHelper.FileHasBinaryContent(filePath))
-                    {
-                        editedFilePaths.Add(filePath);
-                    }
-                }
-            }
-
-            // Set our filtered list
-            args.FilesToProcess = editedFilePaths;
         }
 
         private void backupFilesToProcess()
@@ -146,21 +100,29 @@ namespace ConvertFilesToFormat.Classes
             double totalFilesToProcess = Convert.ToDouble(filePaths.Count);
             foreach (string file in filePaths)
             {
-                try
+                if (!FileFolderHelper.FileHasBinaryContent(file))
                 {
-                    string[] lines = File.ReadAllLines(file);
-                    List<string> list_of_string = new List<string>();
-                    foreach (string line in lines)
+                    try
                     {
-                        list_of_string.Add(line.Replace("\n", "\r\n"));
+                        string[] lines = File.ReadAllLines(file);
+                        List<string> list_of_string = new List<string>();
+                        foreach (string line in lines)
+                        {
+                            list_of_string.Add(line.Replace("\n", "\r\n"));
+                        }
+                        File.WriteAllLines(file, list_of_string);
+                        Console.WriteLine("Converted file \"" + file + "\" to Windows CRLF DOS mode successfully.");
                     }
-                    File.WriteAllLines(file, list_of_string);
-                    Console.WriteLine("Converted file \"" + file + "\" to Windows CRLF DOS mode successfully.");
+                    catch (Exception e)
+                    {
+                        Console.WriteLine("Failed to convert file \"" + file + "\" to Windows CRLF DOS mode due to the following error:\n" + e.Message + "\n");
+                    }
                 }
-                catch (Exception e)
+                else
                 {
-                    Console.WriteLine("Failed to convert file \"" + file + "\" to Windows CRLF DOS mode due to the following error:\n" + e.Message + "\n");
+                    Console.WriteLine("Skipping file \"" + file + "\" due to binary content detection.\n");
                 }
+
                 count++;
                 fileLineFeedConverter.totalFilesProcessed++;
 
@@ -178,34 +140,41 @@ namespace ConvertFilesToFormat.Classes
             const byte LF = 0x0A;
             foreach (string file in filePaths)
             {
-                try
+                if (!FileFolderHelper.FileHasBinaryContent(file))
                 {
-                    byte[] data = File.ReadAllBytes(file);
-                    using (FileStream fileStream = File.OpenWrite(file))
+                    try
                     {
-                        BinaryWriter bw = new BinaryWriter(fileStream);
-                        int position = 0;
-                        int index = 0;
-                        do
+                        byte[] data = File.ReadAllBytes(file);
+                        using (FileStream fileStream = File.OpenWrite(file))
                         {
-                            index = Array.IndexOf<byte>(data, CR, position);
-                            if ((index >= 0) && (data[index + 1] == LF))
+                            BinaryWriter bw = new BinaryWriter(fileStream);
+                            int position = 0;
+                            int index = 0;
+                            do
                             {
-                                // Write before the CR
-                                bw.Write(data, position, index - position);
-                                // from LF
-                                position = index + 1;
+                                index = Array.IndexOf<byte>(data, CR, position);
+                                if ((index >= 0) && (data[index + 1] == LF))
+                                {
+                                    // Write before the CR
+                                    bw.Write(data, position, index - position);
+                                    // from LF
+                                    position = index + 1;
+                                }
                             }
+                            while (index >= 0);
+                            bw.Write(data, position, data.Length - position);
+                            fileStream.SetLength(fileStream.Position);
                         }
-                        while (index >= 0);
-                        bw.Write(data, position, data.Length - position);
-                        fileStream.SetLength(fileStream.Position);
+                        Console.WriteLine("Converted file \"" + file + "\" to Unix LF mode successfully.");
                     }
-                    Console.WriteLine("Converted file \"" + file + "\" to Unix LF mode successfully.");
+                    catch (Exception Ex)
+                    {
+                        Console.WriteLine("Failed to convert file \"" + file + "\" to Unix LF mode due to the following error:\n" + Ex.Message + "\n");
+                    }
                 }
-                catch (Exception Ex)
+                else
                 {
-                    Console.WriteLine("Failed to convert file \"" + file + "\" to Unix LF mode due to the following error:\n" + Ex.Message + "\n");
+                    Console.WriteLine("Skipping file \"" + file + "\" due to binary content detection.\n");
                 }
                 count++;
                 fileLineFeedConverter.totalFilesProcessed++;

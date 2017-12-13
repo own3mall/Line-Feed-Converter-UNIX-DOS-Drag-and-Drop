@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using ConvertFilesToFormat.Extensions;
+using System.Configuration;
 
 namespace ConvertFilesToFormat
 {
@@ -418,23 +419,32 @@ namespace ConvertFilesToFormat
                 bool isFolder = (attr & FileAttributes.Directory) == FileAttributes.Directory;
                 if (isFolder)
                 {
-                    // Add it to our list of parents
-                    if (!FolderParents.Contains(file))
-                    {
-                        FolderParents.Add(file);
-                    }
+                    // Get directory info
+                    DirectoryInfo dir = new DirectoryInfo(file);
 
-                    // Add it to the UI text box
-                    addFolderToRTB(file);
-
-                    // Scan the folder recursively and add all files to the list
-                    List<string> filesInFolder = FileFolderHelper.DirSearch(file);
-                    if (filesInFolder.Any())
+                    // Do NOT process folders that start with a "." since they're probably some Linux format containing git or subversion or similar temp files
+                    // Do NOT process folders that are hidden
+                    if ((!Path.GetFileName(file).StartsWith(".") || ConfigurationManager.AppSettings["SkipFoldersThatBeginWithPeriod"] == "0") && (!dir.Attributes.HasFlag(FileAttributes.Hidden) || ConfigurationManager.AppSettings["SkipHiddenFolders"] == "0"))
                     {
-                        List<string> filesNotInCollection = filesInFolder.Where(x => !filesToProcess.Any(y => y == x)).ToList();
-                        if (filesNotInCollection.Any())
+
+                        // Add it to our list of parents
+                        if (!FolderParents.Contains(file))
                         {
-                            filesToProcess.AddRange(filesNotInCollection);
+                            FolderParents.Add(file);
+                        }
+
+                        // Add it to the UI text box
+                        addFolderToRTB(file);
+
+                        // Scan the folder recursively and add all files to the list
+                        List<string> filesInFolder = FileFolderHelper.DirSearch(file);
+                        if (filesInFolder.Any())
+                        {
+                            List<string> filesNotInCollection = filesInFolder.Where(x => !filesToProcess.Any(y => y == x)).ToList();
+                            if (filesNotInCollection.Any())
+                            {
+                                filesToProcess.AddRange(filesNotInCollection);
+                            }
                         }
                     }
                 }
@@ -447,6 +457,20 @@ namespace ConvertFilesToFormat
                     }
                 }
             }
+
+            filesToProcess = GenericHelper.FilterFiles(filesToProcess, processExtensionsTB(), getBlackListedExtensions());
+        }
+
+        private List<string> getBlackListedExtensions()
+        {
+            // Get defined black list extensions
+            List<string> blacklistedExtensions = new List<string>();
+            var blackListedExtensionsStr = ConfigurationManager.AppSettings["BlackListedExtensions"];
+            if (!string.IsNullOrEmpty(blackListedExtensionsStr))
+            {
+                blacklistedExtensions = GenericHelper.SplitCommaStringToList(blackListedExtensionsStr);
+            }
+            return blacklistedExtensions;
         }
 
         private void HandleConversion()
@@ -468,16 +492,15 @@ namespace ConvertFilesToFormat
                 }
 
                 FileConversionArgs args = new FileConversionArgs { LFMode = actionDL.SelectedIndex, BackupPath = folderPathToBackupTB.Text, BackupFiles = bkFilesCB.Checked, FolderParents = FolderParents };
-                args.FileExtensionsToProcess = processExtensionsTB();
 
                 //Console.WriteLine("---------------------------------------------");
-                Console.WriteLine(date + " - Running conversion " + action + " on " + filesToProcess.Count.ToString() + " " + filesStr + " before applying extension and content filters.");
+                Console.WriteLine(date + " - Running conversion " + action + " on " + filesToProcess.Count.ToString() + " " + filesStr + ".");
                 backgroundWorker.RunWorkerAsync(args);
             }
             else
             {
                 resetDragView();
-                MessageBox.Show("No files to process.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("No valid files to process.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -504,7 +527,7 @@ namespace ConvertFilesToFormat
 
         private void SaveInputs()
         {
-            FileConversionArgs args = new FileConversionArgs { LFMode = actionDL.SelectedIndex, BackupPath = folderPathToBackupTB.Text, BackupFiles = bkFilesCB.Checked, NumberOfThreadsToUse = Convert.ToInt32(numThreadsTB.Text), MaintainFolderStructureOnBackup = mainTainStructureCB.Checked };
+            FileConversionArgs args = new FileConversionArgs { LFMode = actionDL.SelectedIndex, BackupPath = folderPathToBackupTB.Text, BackupFiles = bkFilesCB.Checked, NumberOfThreadsToUse = Convert.ToInt32(numThreadsTB.Text), MaintainFolderStructureOnBackup = mainTainStructureCB.Checked, FileExtensionsToProcess = processExtensionsTB() };
             args.FileExtensionsToProcess = processExtensionsTB();
             GenericHelper.WriteToBinaryFile(AppDomain.CurrentDomain.BaseDirectory + "\\user_settings", args);
         }
@@ -531,7 +554,7 @@ namespace ConvertFilesToFormat
                 if (i != 0 && i % filesToHandlePerThread == 0)
                 {
                     options.FilesToProcess = filesSplitUp;
-                    addThreadedBackgroundWorker(new FileConversionArgs() { FilesToProcess = options.FilesToProcess, BackupFiles = options.BackupFiles, BackupPath = options.BackupPath, FileExtensionsToProcess = options.FileExtensionsToProcess, LFMode = options.LFMode, FolderParents = options.FolderParents, MaintainFolderStructureOnBackup = mainTainStructureCB.Checked});
+                    addThreadedBackgroundWorker(new FileConversionArgs() { FilesToProcess = options.FilesToProcess, BackupFiles = options.BackupFiles, BackupPath = options.BackupPath, LFMode = options.LFMode, FolderParents = options.FolderParents, MaintainFolderStructureOnBackup = mainTainStructureCB.Checked});
                     filesSplitUp = new List<string>();
                 }
                 filesSplitUp.Add(filesToProcess[i]);
@@ -541,7 +564,7 @@ namespace ConvertFilesToFormat
             if (filesSplitUp.Any())
             {
                 options.FilesToProcess = filesSplitUp;
-                addThreadedBackgroundWorker(new FileConversionArgs() { FilesToProcess = options.FilesToProcess, BackupFiles = options.BackupFiles, BackupPath = options.BackupPath, FileExtensionsToProcess = options.FileExtensionsToProcess, LFMode = options.LFMode, FolderParents = options.FolderParents, MaintainFolderStructureOnBackup = mainTainStructureCB.Checked});
+                addThreadedBackgroundWorker(new FileConversionArgs() { FilesToProcess = options.FilesToProcess, BackupFiles = options.BackupFiles, BackupPath = options.BackupPath, LFMode = options.LFMode, FolderParents = options.FolderParents, MaintainFolderStructureOnBackup = mainTainStructureCB.Checked});
                 filesSplitUp = new List<string>();
             }            
         }
